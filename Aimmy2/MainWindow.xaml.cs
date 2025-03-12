@@ -5,7 +5,6 @@ using Aimmy2.MouseMovementLibraries.RazerSupport;
 using Aimmy2.Other;
 using Aimmy2.UILibrary;
 using Aimmy2.WinformsReplacement;
-using Microsoft.Win32;
 using System.Diagnostics;
 using System.IO;
 using System.Windows;

@@ -28,21 +28,16 @@ namespace Aimmy2.AILogic
         #region Variables
 
         private const int IMAGE_SIZE = 640;
-        private const int NUM_DETECTIONS = 8400; // Standard for OnnxV8 model (Shape: 1x5x8400)
+        private const int NUM_DETECTIONS = 8400;
 
         private DateTime lastSavedTime = DateTime.MinValue;
         private List<string>? _outputNames;
         private RectangleF LastDetectionBox;
-        private KalmanPrediction kalmanPrediction;
-        private WiseTheFoxPrediction wtfpredictionManager;
 
-
-        //Direct3D Variables
         private ID3D11Device _device;
         private ID3D11DeviceContext _context;
         private IDXGIOutputDuplication _outputDuplication;
         private ID3D11Texture2D _desktopImage;
-        //public IDXGIAdapter1 _selectedAdapter;
 
         private Bitmap? _captureBitmap;
 
@@ -55,23 +50,13 @@ namespace Aimmy2.AILogic
         private Thread? _aiLoopThread;
         private bool _isAiLoopRunning;
 
-        //fps - copilot, rolling average calculation
         private const int MAXSAMPLES = 100;
         private double[] frameTimes = new double[MAXSAMPLES];
         private int frameTimeIndex = 0;
         private double totalFrameTime = 0;
 
-        // For Auto-Labelling Data System
-        //private bool PlayerFound = false;
-
         private double CenterXTranslated = 0;
         private double CenterYTranslated = 0;
-
-        // For Shall0e's Prediction Method
-        private int PrevX = 0;
-        private int PrevY = 0;
-
-        // private int IndependentMousePress = 0;
 
         private int iterationCount = 0;
         private long totalTime = 0;
@@ -82,15 +67,10 @@ namespace Aimmy2.AILogic
         public double AIConf = 0;
         private static int targetX, targetY;
 
-        //private Graphics? _graphics;
-
         #endregion Variables
 
         public AIManager(string modelPath)
         {
-            kalmanPrediction = new KalmanPrediction();
-            wtfpredictionManager = new WiseTheFoxPrediction();
-
             _modeloptions = new RunOptions();
 
             var sessionOptions = new SessionOptions
@@ -360,7 +340,7 @@ namespace Aimmy2.AILogic
                             if (DetectedPlayerOverlay != null)
                             {
                                 DetectedPlayerOverlay.FpsLabel.Content = $"FPS: {MAXSAMPLES / totalFrameTime:F2}";
-                            } // turn on esp, FPS usually is around 140 fps - was 30 fps.
+                            } // turn on esp, FPS usually is around 160 fps - was 30 fps.
                         });
                     }
                 }
@@ -564,66 +544,7 @@ namespace Aimmy2.AILogic
 
             if (!isTracking) return;
 
-            if (Dictionary.toggleState["Predictions"])
-            {
-                HandlePredictions(kalmanPrediction, closestPrediction, detectedX, detectedY);
-            }
-            else
-            {
-                MouseManager.MoveCrosshair(detectedX, detectedY);
-            }
-        }
-
-        private void HandlePredictions(KalmanPrediction kalmanPrediction, Prediction closestPrediction, int detectedX, int detectedY)
-        {
-            var predictionMethod = Dictionary.dropdownState["Prediction Method"];
-            DateTime currentTime = DateTime.UtcNow;
-
-            switch (predictionMethod)
-            {
-                case "Kalman Filter":
-                    kalmanPrediction.UpdateKalmanFilter(new KalmanPrediction.Detection
-                    {
-                        X = detectedX,
-                        Y = detectedY,
-                        Timestamp = currentTime
-                    });
-
-                    var predictedPosition = kalmanPrediction.GetKalmanPosition();
-                    MouseManager.MoveCrosshair(predictedPosition.X, predictedPosition.Y);
-                    break;
-
-                case "Shall0e's Prediction":
-                    ShalloePredictionV2.xValues.Add(detectedX - PrevX);
-                    ShalloePredictionV2.yValues.Add(detectedY - PrevY);
-
-                    if (ShalloePredictionV2.xValues.Count > 5)
-                    {
-                        ShalloePredictionV2.xValues.RemoveAt(0);
-                    }
-                    if (ShalloePredictionV2.yValues.Count > 5)
-                    {
-                        ShalloePredictionV2.yValues.RemoveAt(0);
-                    }
-
-                    PrevX = detectedX;
-                    PrevY = detectedY;
-
-                    MouseManager.MoveCrosshair(ShalloePredictionV2.GetSPX(), detectedY);
-                    break;
-
-                case "wisethef0x's EMA Prediction":
-                    wtfpredictionManager.UpdateDetection(new WiseTheFoxPrediction.WTFDetection
-                    {
-                        X = detectedX,
-                        Y = detectedY,
-                        Timestamp = currentTime
-                    });
-
-                    var wtfpredictedPosition = wtfpredictionManager.GetEstimatedPosition();
-                    MouseManager.MoveCrosshair(wtfpredictedPosition.X, detectedY);
-                    break;
-            }
+            MouseManager.MoveCrosshair(detectedX, detectedY);
         }
         #endregion
         #region Prediction (AI Work)
@@ -940,46 +861,42 @@ namespace Aimmy2.AILogic
             return dist;
         };
 
-        public static float[] BitmapToFloatArray(Bitmap image)
+        public static unsafe float[] BitmapToFloatArray(Bitmap image)
         {
             int height = image.Height;
             int width = image.Width;
-            const int channels = 3;
             int pixelCount = height * width;
-            float[] result = new float[channels * pixelCount];
-            float multiplier = 1.0f / 255.0f;
+            float[] result = new float[3 * pixelCount];
+            float multiplier = 1.0f / 31.0f;
 
             var rect = new Rectangle(0, 0, width, height);
-            var bmpData = image.LockBits(rect, ImageLockMode.ReadOnly, PixelFormat.Format32bppRgb);
+            var bmpData = image.LockBits(rect, ImageLockMode.ReadOnly, PixelFormat.Format16bppRgb555);
 
             try
             {
                 int stride = bmpData.Stride;
                 IntPtr scan0 = bmpData.Scan0;
 
-                unsafe
+
+                byte* p = (byte*)scan0.ToPointer();
+                _ = Parallel.For(0, height, y =>
                 {
-                    byte* p = (byte*)scan0.ToPointer();
-                    Parallel.For(0, height, y =>
+                    byte* row = p + y * stride;
+                    int rowOffset = y * width;
+                    for (int i = 0; i < width; i++)
                     {
-                        byte* row = p + y * stride;
-                        int rowOffset = y * width;
+                        int pixelIndex = i * 2;
+                        int resultIndex = rowOffset + i;
+                        ushort pixel = (ushort)(row[pixelIndex] | (row[pixelIndex + 1] << 8));
+                        float r = ((pixel >> 10) & 0x1F) * multiplier;
+                        float g = ((pixel >> 5) & 0x1F) * multiplier;
+                        float b = (pixel & 0x1F) * multiplier;
+                        result[resultIndex] = r;
+                        result[pixelCount + resultIndex] = g;
+                        result[2 * pixelCount + resultIndex] = b;
+                    }
+                });
 
-                        for (int x = 0; x < width; x++)
-                        {
-                            int pixelIndex = x * 4;
-                            int resultIndex = rowOffset + x;
-
-                            byte b = row[pixelIndex + 0];
-                            byte g = row[pixelIndex + 1];
-                            byte r = row[pixelIndex + 2];
-
-                            result[resultIndex] = r * multiplier;
-                            result[pixelCount + resultIndex] = g * multiplier;
-                            result[2 * pixelCount + resultIndex] = b * multiplier;
-                        }
-                    });
-                }
             }
             finally
             {
@@ -993,12 +910,10 @@ namespace Aimmy2.AILogic
         public void Dispose()
         {
             _isAiLoopRunning = false;
-            if (_aiLoopThread != null && _aiLoopThread.IsAlive)
+            if (_aiLoopThread != null && _aiLoopThread.IsAlive && !_aiLoopThread.Join(TimeSpan.FromSeconds(1)))
             {
-                if (!_aiLoopThread.Join(TimeSpan.FromSeconds(1)))
-                {
-                    _aiLoopThread.Interrupt();
-                }
+                _aiLoopThread.Interrupt();
+
             }
             DisposeResources();
         }
