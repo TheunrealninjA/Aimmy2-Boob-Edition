@@ -31,7 +31,7 @@ This is a fork of [Aimmy](https://github.com/Babyhamsta/Aimmy/), if any problems
 - Download and Install the x64 version of [.NET Runtime 8.0.X.X](https://dotnet.microsoft.com/en-us/download/dotnet/thank-you/runtime-desktop-8.0.2-windows-x64-installer)
 - Download and Install the x64 version of [.NET Runtime 7.0.X.X](https://dotnet.microsoft.com/en-us/download/dotnet/thank-you/runtime-desktop-7.0.20-windows-x64-installer)
 - Download and Install the x64 version of [Visual C++ Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe)
-- Download Aimmy from [Releases](https://github.com/TaylorIsBlue/Aimmy-CUDA/releases) (Make sure it's the Aimmy zip that says **Prepacked CUDA** and not Source zip)
+- Download Aimmy from [Releases](https://github.com/TheunrealninjA/Aimmy2-Boob-Edition/releases)
 - Extract and run totallynotaimmyv2.exe
 - Go to the troubleshooting section if you have issues.
 
